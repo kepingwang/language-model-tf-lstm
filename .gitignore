@@ -1,0 +1,6 @@
+.DS_Store
+datasets/
+.vscode/
+.ipynb_checkpoints/
+model/results/
+__pycache__/
