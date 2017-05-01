@@ -35,6 +35,9 @@ punctuation_set = [
   '-', '!', '?', ';', ':', '/', '|'
   ]
 
+things_to_remove = [
+  ','
+]
 
 def clean_up_text(raw_text):
   # convert byte to str
@@ -57,6 +60,9 @@ def clean_up_text(raw_text):
   text = text.lower()
   # replace all numbers with '#'
   text = re.sub('\d', '#', text)
+  # remove certain tokens (now only comma)
+  for thing_to_remove in things_to_remove:
+    text = text.replace(thing_to_remove, '')
   # use space as separator, so add spaces around punctuations
   for punctuation in punctuation_set:
     text = text.replace(punctuation, ' '+punctuation+' ')
@@ -67,21 +73,34 @@ def clean_up_text(raw_text):
 
 class WordDict():
   """ A word dictionary mapping string tokens to integer ids.
-  Id 0 is reserved for all unknown tokens, using key "_UNKNOWN".
+  Id 0 is reserved for all unknown tokens, using key "<unk>".
   """
+  max_vocab_size = 7999
 
   def __init__(self, tokens):
     """ Takes an iterator/list of tokens and
     construct a dictionary of token key and integer values.
     """
+    word_set = set()
+    words = []
+    words_dict = {}
+    for token in tokens:
+      if token == '':
+        continue
+      if token not in words_dict:
+        words_dict[token] = 1
+      else:
+        words_dict[token] = words_dict[token] + 1
+    s = [(k, words_dict[k]) for k in sorted(
+      words_dict, key=words_dict.get, reverse=True)]
+
     self.word_dict = {}
     self.word_list = []
-    self.word_dict['_UNKNOWN'] = 0
-    self.word_list.append('_UNKNOWN')
-    for token in tokens:
-      if token != '' and token not in self.word_dict:
-        self.word_dict[token] = len(self.word_dict)
-        self.word_list.append(token)
+    self.word_dict['<unk>'] = 0
+    self.word_list.append('<unk>')
+    for k, v in s[:min(len(s), WordDict.max_vocab_size)]:
+      self.word_dict[k] = len(self.word_dict)
+      self.word_list.append(k)
 
   def get_id(self, token):
     """ Get the integer id for the given token, return 0 if token not found. """

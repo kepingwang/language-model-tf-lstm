@@ -1,21 +1,24 @@
 import numpy as np
 import tensorflow as tf
-import scripts.net_helper as net_helper
 
 class LanguageModel(object):
 
   def __init__(self, batch_size, T, global_step, vocab_size):
 
-    init_learning_rate = 0.001
-    decay_steps = 1000
+    init_learning_rate = 0.01
+    decay_steps = 2000
     decay_rate = 0.96
-    
-    clip_norm = 5
-    hidden_size = 128 # hidden vector size (assume shared by all)
-    num_layers = 3
+    keep_prob = 0.5
 
+    init_scale = 0.01
+
+    clip_norm = 5
+    hidden_size = 512 # hidden vector size (assume shared by all)
+    num_layers = 2
     predict_steps = 20
 
+    is_training = tf.placeholder(tf.bool, name="isTraining")
+    self._is_training = is_training
     input_data = tf.placeholder(tf.int64, [batch_size, T], name="inputData")
     self._input_data = input_data
     labels = tf.placeholder(tf.int64, [batch_size, T], name="labels")
@@ -25,26 +28,22 @@ class LanguageModel(object):
     # initialized to 1 but the hyperparameters of the model would need to be
     # different than reported in the paper.
     def lstm_cell():
-        return tf.contrib.rnn.BasicLSTMCell(
-            hidden_size, forget_bias=0.0, state_is_tuple=True)
+      return tf.contrib.rnn.BasicLSTMCell(
+        hidden_size, forget_bias=0.0, state_is_tuple=True)
 
-    attn_cell = lstm_cell
-    # TODO: dropout and batchnorm
-    # if is_training and config.keep_prob < 1:
-    #   def attn_cell():
-    #     return tf.contrib.rnn.DropoutWrapper(
-    #         lstm_cell(), output_keep_prob=config.keep_prob)
+    def attn_cell():
+      return tf.contrib.rnn.DropoutWrapper(lstm_cell(), output_keep_prob=tf.cond(is_training, lambda: tf.constant(keep_prob), lambda: tf.constant(1.0)))
 
     cell = tf.contrib.rnn.MultiRNNCell(
         [attn_cell() for _ in range(num_layers)], state_is_tuple=True)
 
-    embeddings = net_helper.W_var([vocab_size, hidden_size], name="embeddings")
+    embeddings = tf.Variable(tf.random_uniform([vocab_size, hidden_size], minval=-init_scale, maxval=init_scale), name="embeddings")
     self._embeddings = embeddings
-    inputs = tf.nn.embedding_lookup(embeddings, input_data)
 
-    # TODO: dropout and batchnorm
-    # if is_training and config.keep_prob < 1:
-    #   inputs = tf.nn.dropout(inputs, config.keep_prob)
+    inputs = tf.nn.embedding_lookup(embeddings, input_data)
+    inputs = tf.cond(is_training, 
+                     lambda: tf.nn.dropout(inputs, keep_prob),
+                     lambda: inputs)
 
     outputs = []
     state = cell.zero_state(batch_size, dtype=tf.float32)
@@ -54,11 +53,10 @@ class LanguageModel(object):
         cell_output, state = cell(inputs[:, t, :], state)
         outputs.append(cell_output)
 
-    # reshaped output 
     output = tf.reshape(tf.stack(outputs, axis=1), [-1, hidden_size])
 
-    softmax_w = net_helper.W_var([hidden_size, vocab_size], name="project_out_W")
-    softmax_b = net_helper.b_var(vocab_size, name="project_out_b")
+    softmax_w = tf.Variable(tf.random_uniform([hidden_size, vocab_size], minval=-init_scale, maxval=init_scale), name="project_out_W")
+    softmax_b = tf.Variable(tf.zeros([vocab_size]), name="project_out_b")
     logits = tf.matmul(output, softmax_w) + softmax_b
 
     loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
@@ -81,17 +79,22 @@ class LanguageModel(object):
 
     # ==== Predict Output after Input ====
     # previously already have outputs and state
+    outputs = [inputs[:,-1,:]]
     with tf.variable_scope("RNN", reuse=True):
       for t in range(predict_steps):
         cell_output, state = cell(outputs[-1], state)
         outputs.append(cell_output)
 
     prediction_output = tf.reshape(tf.stack(outputs, axis=1), [-1, hidden_size])
-    prediction_logits = prediction_output @ softmax_w + softmax_b
+    prediction_logits = tf.matmul(prediction_output, softmax_w) + softmax_b
     predictions = tf.reshape(
       tf.argmax(prediction_logits, axis=1),
-      [batch_size, T+predict_steps])
+      [batch_size, -1])
     self._predictions = predictions
+
+  @property
+  def is_training(self):
+    return self._is_training;
 
   @property
   def input_data(self):
