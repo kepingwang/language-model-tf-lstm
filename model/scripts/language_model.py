@@ -6,14 +6,14 @@ class LanguageModel(object):
   def __init__(self, batch_size, T, global_step, vocab_size):
 
     init_learning_rate = 0.01
-    decay_steps = 2000
+    decay_steps = 1000
     decay_rate = 0.96
     keep_prob = 0.5
 
     init_scale = 0.01
 
-    clip_norm = 5
-    hidden_size = 512 # hidden vector size (assume shared by all)
+    clip_norm = 7
+    hidden_size = 800 # hidden vector size (assume shared by all)
     num_layers = 2
     predict_steps = 20
 
@@ -51,6 +51,9 @@ class LanguageModel(object):
       for t in range(T):
         if t > 0: tf.get_variable_scope().reuse_variables()
         cell_output, state = cell(inputs[:, t, :], state)
+        # tf.summary.image("trn_state"+str(t),
+        #                  tf.reshape(state[0].h, [batch_size, 4, hidden_size // 4, 1]),
+        #                  max_outputs=1)
         outputs.append(cell_output)
 
     output = tf.reshape(tf.stack(outputs, axis=1), [-1, hidden_size])
@@ -79,7 +82,6 @@ class LanguageModel(object):
 
     # ==== Predict Output after Input ====
     # previously already have outputs and state
-    outputs = [inputs[:,-1,:]]
     with tf.variable_scope("RNN", reuse=True):
       for t in range(predict_steps):
         cell_output, state = cell(outputs[-1], state)
