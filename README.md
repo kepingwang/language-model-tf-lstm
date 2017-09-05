@@ -1,5 +1,2 @@
-### Unsupervised Text Generation
+## [Language Model with LSTM in TensorFlow](./report/main.pdf)
 
-Final project for Duke ECE681.01 Pattern Recognition.
-
-Keping Wang
